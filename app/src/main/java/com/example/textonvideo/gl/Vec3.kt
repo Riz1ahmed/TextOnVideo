@@ -1,4 +1,4 @@
-package eu.sisik.addtexttovideo.gl
+package com.example.textonvideo.gl
 
 import kotlin.math.sqrt
 

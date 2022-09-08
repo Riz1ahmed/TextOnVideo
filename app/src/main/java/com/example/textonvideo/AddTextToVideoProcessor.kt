@@ -1,5 +1,6 @@
 package com.example.textonvideo
 
+import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.media.*
 import android.opengl.*
@@ -8,10 +9,10 @@ import android.os.HandlerThread
 import android.util.Size
 import android.view.Surface
 import com.learner.codereducer.utils.logD
-import eu.sisik.addtexttovideo.gl.TextAnimator
-import eu.sisik.addtexttovideo.gl.TextureRenderer
-import eu.sisik.addtexttovideo.utils.getSupportedVideoSize
-import eu.sisik.addtexttovideo.utils.textToBitmap
+import com.example.textonvideo.gl.TextAnimator
+import com.example.textonvideo.gl.TextureRenderer
+import com.example.textonvideo.utils.getSupportedVideoSize
+import com.example.textonvideo.utils.textToBitmap
 import java.io.FileDescriptor
 import java.security.InvalidParameterException
 
@@ -256,6 +257,7 @@ class AddTextToVideoProcessor {
             throw RuntimeException("eglMakeCurrent(): " + GLUtils.getEGLErrorString(EGL14.eglGetError()))
     }
 
+    private var textBitmap: Bitmap? = null
     private fun process() {
         logD("Process called")
         allInputExtracted = false
@@ -319,9 +321,11 @@ class AddTextToVideoProcessor {
 
                             textAnimator.update()
                             textRenderer!!.draw(
-                                textAnimator.getMVP(), null, textToBitmap(text!!, width, height)
+                                textAnimator.getMVP(),
+                                null, textBitmap ?: textToBitmap(text!!, width, height)
+                                    .also { textBitmap = it }
                             )
-                            logD("Drawing at time ${bufferInfo.presentationTimeUs/1000000f}")
+                            logD("Drawing at time ${bufferInfo.presentationTimeUs / 1000000f}")
 
                             EGLExt.eglPresentationTimeANDROID(
                                 eglDisplay, eglSurface, bufferInfo.presentationTimeUs * 1000

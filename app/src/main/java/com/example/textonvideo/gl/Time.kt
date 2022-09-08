@@ -1,4 +1,4 @@
-package eu.sisik.addtexttovideo.gl
+package com.example.textonvideo.gl
 
 /**
  * Copyright (c) 2018 by Roman Sisik. All rights reserved.

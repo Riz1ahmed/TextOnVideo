@@ -1,6 +1,7 @@
-package eu.sisik.addtexttovideo.utils
+package com.example.textonvideo.utils
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
@@ -11,7 +12,6 @@ import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import android.util.Size
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import kotlin.math.absoluteValue
 
@@ -80,6 +80,7 @@ fun getSupportedVideoSize(mediaCodec: MediaCodec, mime: String, preferredResolut
     throw RuntimeException("Couldn't find supported resolution")
 }
 
+@SuppressLint("Range")
 fun getName(context: Context, fromUri: Uri): String? {
     var name: String? = null
     context.contentResolver.query(
@@ -109,7 +110,7 @@ fun textToBitmap(text: String, width: Int, height: Int): Bitmap {
     paint.textSize = paint.textSize * width.toFloat() / bounds.width()
 
     // Or fit to height
-//            paint.textSize = ceil(paint.textSize * height.toDouble() / bounds.height()).toFloat()
+    // paint.textSize = ceil(paint.textSize * height.toDouble() / bounds.height()).toFloat()
 
     // You can also affect the aspect ratio of text and try to fit both, width and height,
     // with paint.setTextScaleX()
@@ -124,55 +125,4 @@ fun textToBitmap(text: String, width: Int, height: Int): Bitmap {
     canvas.drawText(text, -bounds.left.toFloat(), -bounds.top.toFloat(), paint)
     return bitmap
 }
-
-//region not Used
-fun needsStoragePermission(context: Context): Boolean {
-    return Build.VERSION.SDK_INT >= 23 && context.checkSelfPermission(
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    ) != PackageManager.PERMISSION_GRANTED
-}
-
-fun requestStoragePermission(activity: AppCompatActivity, code: Int) {
-    if (Build.VERSION.SDK_INT >= 23)
-        activity.requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), code)
-}
-
-fun performVideoSearch(activity: AppCompatActivity, code: Int) {
-    performFileSearch(
-        activity, code, false,
-        "video/*",
-        "video/3gpp",
-        "video/dl",
-        "video/dv",
-        "video/fli",
-        "video/m4v",
-        "video/mpeg",
-        "video/mp4",
-        "video/quicktime",
-        "video/vnd.mpegurl",
-        "video/x-la-asf",
-        "video/x-mng",
-        "video/x-ms-asf",
-        "video/x-ms-wm",
-        "video/x-ms-wmx",
-        "video/x-ms-wvx",
-        "video/x-msvideo",
-        "video/x-webex"
-    )
-}
-
-private fun performFileSearch(
-    activity: AppCompatActivity, code: Int, multiple: Boolean, type: String,
-    vararg mimetype: String
-) {
-    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-        addCategory(Intent.CATEGORY_OPENABLE)
-        this.type = type
-        putExtra(Intent.EXTRA_MIME_TYPES, mimetype)
-        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
-    }
-
-    activity.startActivityForResult(intent, code)
-}
-//endregion
 

@@ -11,10 +11,12 @@ import androidx.appcompat.app.AppCompatActivity
 import com.example.textonvideo.databinding.ActivityMainBinding
 import com.learner.codereducer.utils.MediaUtils
 import com.learner.codereducer.utils.MyActivityResult
+import com.learner.codereducer.utils.hide
 import com.video_lab.permission_controller.PermissionListener
 import com.video_lab.permission_controller.PermissionsController
-import eu.sisik.addtexttovideo.utils.getName
-import eu.sisik.addtexttovideo.utils.isServiceRunning
+import com.example.textonvideo.utils.getName
+import com.example.textonvideo.utils.isServiceRunning
+import com.learner.codereducer.utils.MediaAPIUtils
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
@@ -33,8 +35,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == CODE_PROCESSING_FINISHED)
-            binding.progressEncoding.visibility = View.INVISIBLE
+        /**When process finish, Hide the progress*/
+        if (requestCode == CODE_PROCESSING_FINISHED) binding.progressEncoding.hide()
     }
 
 
@@ -45,10 +47,11 @@ class MainActivity : AppCompatActivity() {
                 android.Manifest.permission.WRITE_EXTERNAL_STORAGE
             ), object : PermissionListener {
                 override fun allGranted() {
+                    //Take as video picking configured intent
                     val videoPickerIntent = MediaUtils.getVideoPickerIntent()
-
+                    //Call activityResult with the intent so that, pick video from storage.
                     activityResult.startIntent(videoPickerIntent) { result ->
-                        if (result?.data?.data != null) inputFile = result.data?.data
+                        if (result?.data?.data != null) setInputVideoUri(result.data?.data!!)
                     }
                 }
             })
@@ -57,6 +60,14 @@ class MainActivity : AppCompatActivity() {
             MediaUtils.playVideo(this, getOutputPath())
         }
         binding.butProcessVideo.setOnClickListener { processVideo() }
+    }
+
+    private fun setInputVideoUri(uri: Uri) {
+        inputFile = uri
+        //Show thumbnail
+        MediaAPIUtils.getVideoThumbnail(this, uri) {
+
+        }
     }
 
     private fun processVideo() {

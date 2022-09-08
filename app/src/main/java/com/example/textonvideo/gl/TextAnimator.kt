@@ -1,7 +1,6 @@
-package eu.sisik.addtexttovideo.gl
+package com.example.textonvideo.gl
 
 import android.opengl.Matrix
-import android.util.Log
 import kotlin.math.tan
 
 /**

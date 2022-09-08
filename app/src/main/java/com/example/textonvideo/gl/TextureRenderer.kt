@@ -1,4 +1,4 @@
-package eu.sisik.addtexttovideo.gl
+package com.example.textonvideo.gl
 
 import android.graphics.Bitmap
 import android.opengl.GLES11Ext
