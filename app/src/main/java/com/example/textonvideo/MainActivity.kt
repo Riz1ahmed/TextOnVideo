@@ -1,22 +1,24 @@
 package com.example.textonvideo
 
+import android.content.ComponentName
 import android.content.Intent
+import android.content.ServiceConnection
 import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Bundle
+import android.os.IBinder
 import android.provider.MediaStore
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.textonvideo.databinding.ActivityMainBinding
+import com.example.textonvideo.utils.getName
+import com.example.textonvideo.utils.isServiceRunning
 import com.learner.codereducer.utils.MediaUtils
 import com.learner.codereducer.utils.MyActivityResult
 import com.learner.codereducer.utils.hide
 import com.video_lab.permission_controller.PermissionListener
 import com.video_lab.permission_controller.PermissionsController
-import com.example.textonvideo.utils.getName
-import com.example.textonvideo.utils.isServiceRunning
-import com.learner.codereducer.utils.MediaAPIUtils
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
@@ -65,9 +67,7 @@ class MainActivity : AppCompatActivity() {
     private fun setInputVideoUri(uri: Uri) {
         inputFile = uri
         //Show thumbnail
-        MediaAPIUtils.getVideoThumbnail(this, uri) {
-
-        }
+        //MediaAPIUtils.getVideoThumbnail(this, uri) {}
     }
 
     private fun processVideo() {
@@ -88,6 +88,29 @@ class MainActivity : AppCompatActivity() {
             binding.progressEncoding.visibility = View.VISIBLE
         } else showToast("Select video file that you want to convert to grayscale first")
     }
+
+    var tovService: TextOnVideoService? = null
+    private fun createVideo() {
+        Intent(this, TextOnVideoService::class.java).apply {
+            putExtra(VideoProcessingService.KEY_OUT_PATH, getOutputPath())
+            putExtra(VideoProcessingService.KEY_INPUT_VID_URI, inputFile)
+            putExtra(VideoProcessingService.KEY_DRAW_TEXT, binding.etText.text?.toString())
+            //serviceIntent.action = //Pass as string and get in service
+            startService(this)
+            bindMyService(this) { tovService = it }
+        }
+    }
+
+    private fun bindMyService(serviceIntent: Intent, callback: (TextOnVideoService) -> Unit) {
+        bindService(serviceIntent, object : ServiceConnection {
+            override fun onServiceDisconnected(name: ComponentName?) {}
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                val s = (service as TextOnVideoService.VPSBinder).getService()
+                callback(s)
+            }
+        }, BIND_AUTO_CREATE)
+    }
+
 
     private fun configureUi() {
         if (isServiceRunning(this, VideoProcessingService::class.java))

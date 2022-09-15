@@ -8,11 +8,11 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Size
 import android.view.Surface
-import com.learner.codereducer.utils.logD
 import com.example.textonvideo.gl.TextAnimator
 import com.example.textonvideo.gl.TextureRenderer
 import com.example.textonvideo.utils.getSupportedVideoSize
 import com.example.textonvideo.utils.textToBitmap
+import com.learner.codereducer.utils.logD
 import java.io.FileDescriptor
 import java.security.InvalidParameterException
 
@@ -91,11 +91,11 @@ class AddTextToVideoProcessor {
      *             and it can be obtained from Uri (which I get from system file picker).
      *             Feel free to adjust to your preferences.
      */
-    fun process(outPath: String, inputVidFd: FileDescriptor, text: String) {
+    fun startEngine(outPath: String, inputVidFd: FileDescriptor, text: String) {
         this.text = text
         try {
             init(outPath, inputVidFd)
-            process()
+            startEngine()
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
@@ -109,6 +109,15 @@ class AddTextToVideoProcessor {
         extractor!!.setDataSource(inputVidFd)
         val inFormat = selectVideoTrackAndGetFormat(extractor!!)
 
+        initEncoder(inFormat)
+        initDecoder(inFormat)
+        initMuxer(outPath)
+
+        encoder!!.start()//Ready to process
+        decoder!!.start()//Ready to process
+    }
+
+    private fun initEncoder(inFormat: MediaFormat) {
         // Create H.264 encoder
         encoder = MediaCodec.createEncoderByType(outMime)
 
@@ -129,33 +138,31 @@ class AddTextToVideoProcessor {
         textRenderer = TextureRenderer(false)
         surfaceTexture = SurfaceTexture(videoRenderer!!.texId)
 
-        // Control the thread from which OnFrameAvailableListener will
-        // be called
+        // Control the thread from which OnFrameAvailableListener will be called
         thread = HandlerThread("FrameHandlerThread")
         thread!!.start()
 
         surfaceTexture!!.setOnFrameAvailableListener({
             synchronized(lock) {
-
-                // New frame available before the last frame was process...we dropped some frames
-                if (frameAvailable)
-                    logD("Frame available before the last frame was process...we dropped some frames")
+                val msg =
+                    "Frame available before the last frame was process...we dropped some frames"
+                if (frameAvailable) logD(msg)
                 frameAvailable = true
                 lock.notifyAll()
             }
         }, Handler(thread!!.looper))
-
         outputSurface = Surface(surfaceTexture)
+    }
 
+    private fun initMuxer(outPath: String) {
+        // Init muxer
+        muxer = MediaMuxer(outPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+    }
+
+    private fun initDecoder(inFormat: MediaFormat) {
         // Init decoder
         decoder = MediaCodec.createDecoderByType(inFormat.getString(MediaFormat.KEY_MIME)!!)
         decoder!!.configure(inFormat, outputSurface, null, 0)
-
-        // Init muxer
-        muxer = MediaMuxer(outPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-
-        encoder!!.start()
-        decoder!!.start()
     }
 
     private fun selectVideoTrackAndGetFormat(extractor: MediaExtractor): MediaFormat {
@@ -166,7 +173,6 @@ class AddTextToVideoProcessor {
                 return format
             }
         }
-
         throw InvalidParameterException("File contains no video track")
     }
 
@@ -176,9 +182,9 @@ class AddTextToVideoProcessor {
             inputFormat.getInteger(MediaFormat.KEY_WIDTH),
             inputFormat.getInteger(MediaFormat.KEY_HEIGHT)
         )
-        val outputSize = getSupportedVideoSize(encoder!!, outMime, inputSize)
+        val outVSize = getSupportedVideoSize(encoder!!, outMime, inputSize)
 
-        return MediaFormat.createVideoFormat(outMime, outputSize.width, outputSize.height).apply {
+        return MediaFormat.createVideoFormat(outMime, outVSize.width, outVSize.height).apply {
             setInteger(
                 MediaFormat.KEY_COLOR_FORMAT,
                 MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
@@ -193,6 +199,7 @@ class AddTextToVideoProcessor {
         }
     }
 
+    /**Init [eglDisplay], [eglContext] & [eglSurface]*/
     private fun initEgl() {
         eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
         if (eglDisplay == EGL14.EGL_NO_DISPLAY)
@@ -217,14 +224,8 @@ class AddTextToVideoProcessor {
         val configs = arrayOfNulls<EGLConfig>(1)
         val nConfigs = IntArray(1)
         if (!EGL14.eglChooseConfig(
-                eglDisplay,
-                attribList,
-                0,
-                configs,
-                0,
-                configs.size,
-                nConfigs,
-                0
+                eglDisplay, attribList, 0, configs,
+                0, configs.size, nConfigs, 0
             )
         )
             throw RuntimeException(GLUtils.getEGLErrorString(EGL14.eglGetError()))
@@ -244,9 +245,7 @@ class AddTextToVideoProcessor {
         if (err != EGL14.EGL_SUCCESS)
             throw RuntimeException(GLUtils.getEGLErrorString(err))
 
-        val surfaceAttribs = intArrayOf(
-            EGL14.EGL_NONE
-        )
+        val surfaceAttribs = intArrayOf(EGL14.EGL_NONE)
         eglSurface =
             EGL14.eglCreateWindowSurface(eglDisplay, configs[0], inputSurface, surfaceAttribs, 0)
         err = EGL14.eglGetError()
@@ -258,7 +257,7 @@ class AddTextToVideoProcessor {
     }
 
     private var textBitmap: Bitmap? = null
-    private fun process() {
+    private fun startEngine() {
         logD("Process called")
         allInputExtracted = false
         allInputDecoded = false
@@ -321,8 +320,8 @@ class AddTextToVideoProcessor {
 
                             textAnimator.update()
                             textRenderer!!.draw(
-                                textAnimator.getMVP(),
-                                null, textBitmap ?: textToBitmap(text!!, width, height)
+                                textAnimator.getMVP(), null,
+                                textBitmap ?: textToBitmap(text!!, width, height)
                                     .also { textBitmap = it }
                             )
                             logD("Drawing at time ${bufferInfo.presentationTimeUs / 1000000f}")
