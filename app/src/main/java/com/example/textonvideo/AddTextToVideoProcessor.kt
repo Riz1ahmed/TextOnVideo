@@ -16,10 +16,6 @@ import com.learner.codereducer.utils.logD
 import java.io.FileDescriptor
 import java.security.InvalidParameterException
 
-
-/**
- * Copyright (c) 2019 by Roman Sisik. All rights reserved.
- */
 class AddTextToVideoProcessor {
 
     // Format for the greyscale video output file
@@ -29,7 +25,11 @@ class AddTextToVideoProcessor {
     // for processing of the video
     private var extractor: MediaExtractor? = null
     private var muxer: MediaMuxer? = null
+
+    //For get details from Input video
     private var decoder: MediaCodec? = null
+
+    //For create Output video from Details (Details may anywhere)
     private var encoder: MediaCodec? = null
 
     private val mediaCodedTimeoutUs = 10000L
@@ -43,7 +43,7 @@ class AddTextToVideoProcessor {
     private var allOutputEncoded = false
 
     // Handles to raw video data used by MediaCodec encoder & decoder
-    private var inputSurface: Surface? = null
+    private var inputSurface: Surface? = null//Instance from encoder
     private var outputSurface: Surface? = null
 
     // Helper for the OpenGL rendering stuff
@@ -65,8 +65,9 @@ class AddTextToVideoProcessor {
     // the decoded frame
     private val texMatrix = FloatArray(16)
 
-    private var width = -1
-    private var height = -1
+    /*private var width = -1
+    private var height = -1*/
+    private var outputSize = Size(-1, -1)
 
     // Signalizes when a new decoded frame is available as texture
     // for OpenGL rendering
@@ -105,34 +106,32 @@ class AddTextToVideoProcessor {
 
     private fun init(outPath: String, inputVidFd: FileDescriptor) {
         // Init extractor
-        extractor = MediaExtractor()
-        extractor!!.setDataSource(inputVidFd)
-        val inFormat = selectVideoTrackAndGetFormat(extractor!!)
+        val inFormat = InitExtractorAndGetVideoFile(inputVidFd)
 
-        initEncoder(inFormat)
-        initDecoder(inFormat)
+        initEncoderAndInputSurface(inFormat)
+        initEgl()
+        initDecoderAndOutputSurface(inFormat)
         initMuxer(outPath)
 
         encoder!!.start()//Ready to process
         decoder!!.start()//Ready to process
     }
 
-    private fun initEncoder(inFormat: MediaFormat) {
+    private fun initEncoderAndInputSurface(inFormat: MediaFormat) {
         // Create H.264 encoder
         encoder = MediaCodec.createEncoderByType(outMime)
 
         // Prepare output format for the encoder
         val outFormat = getOutputFormat(inFormat)
-        width = outFormat.getInteger(MediaFormat.KEY_WIDTH)
-        height = outFormat.getInteger(MediaFormat.KEY_HEIGHT)
+        //width = outFormat.getInteger(MediaFormat.KEY_WIDTH)
+        //height = outFormat.getInteger(MediaFormat.KEY_HEIGHT)
 
-        // Configure the encoder
+        // Configure the encoder & input surface
         encoder!!.configure(outFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         inputSurface = encoder!!.createInputSurface()
+    }
 
-        // Init input surface + make sure it's made current
-        initEgl()
-
+    private fun initDecoderAndOutputSurface(inFormat: MediaFormat) {
         // Init output surface
         videoRenderer = TextureRenderer()
         textRenderer = TextureRenderer(false)
@@ -152,6 +151,10 @@ class AddTextToVideoProcessor {
             }
         }, Handler(thread!!.looper))
         outputSurface = Surface(surfaceTexture)
+
+        // Init decoder
+        decoder = MediaCodec.createDecoderByType(inFormat.getString(MediaFormat.KEY_MIME)!!)
+        decoder!!.configure(inFormat, outputSurface, null, 0)
     }
 
     private fun initMuxer(outPath: String) {
@@ -159,44 +162,51 @@ class AddTextToVideoProcessor {
         muxer = MediaMuxer(outPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
     }
 
-    private fun initDecoder(inFormat: MediaFormat) {
-        // Init decoder
-        decoder = MediaCodec.createDecoderByType(inFormat.getString(MediaFormat.KEY_MIME)!!)
-        decoder!!.configure(inFormat, outputSurface, null, 0)
-    }
-
-    private fun selectVideoTrackAndGetFormat(extractor: MediaExtractor): MediaFormat {
-        for (i in 0 until extractor.trackCount) {
-            val format = extractor.getTrackFormat(i)
+    /**Initialize the [extractor] with the [inputVidFd]. Then search on it
+     * Video file ("Video/"). if found, select and return it. Other
+     * throw Not found exception.*/
+    private fun InitExtractorAndGetVideoFile(inputVidFd: FileDescriptor): MediaFormat {
+        //Init extractor
+        extractor = MediaExtractor()
+        extractor!!.setDataSource(inputVidFd)
+        //Search video file. if found, select and return
+        for (i in 0 until extractor!!.trackCount) {
+            val format = extractor!!.getTrackFormat(i)
             if (format.getString(MediaFormat.KEY_MIME)!!.startsWith("video/")) {
-                extractor.selectTrack(i)
+                extractor!!.selectTrack(i)
                 return format
             }
         }
         throw InvalidParameterException("File contains no video track")
     }
 
+    /**
+     * @param inputFormat it's for get the axact video size and FPS
+     * @return a new MediaFormat
+     *
+     * * Also it's Init the the outSize. Also you can get this by
+     * returnedFormat.getInteger(MediaFormat.KEY_WIDTH)
+     * returnedFormat.getInteger(MediaFormat.KEY_HEIGHT)*/
     private fun getOutputFormat(inputFormat: MediaFormat): MediaFormat {
         // Preferably the output vid should have same resolution as input vid
         val inputSize = Size(
             inputFormat.getInteger(MediaFormat.KEY_WIDTH),
             inputFormat.getInteger(MediaFormat.KEY_HEIGHT)
         )
-        val outVSize = getSupportedVideoSize(encoder!!, outMime, inputSize)
-
-        return MediaFormat.createVideoFormat(outMime, outVSize.width, outVSize.height).apply {
-            setInteger(
-                MediaFormat.KEY_COLOR_FORMAT,
-                MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
-            )
-            setInteger(MediaFormat.KEY_BIT_RATE, 2000000)
-            setInteger(
-                MediaFormat.KEY_FRAME_RATE,
-                inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE)
-            )
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 15)
-            setString(MediaFormat.KEY_MIME, outMime)
-        }
+        outputSize = getSupportedVideoSize(encoder!!, outMime, inputSize)
+        val mf = MediaFormat.createVideoFormat(outMime, outputSize.width, outputSize.height)
+        mf.setInteger(
+            MediaFormat.KEY_COLOR_FORMAT,
+            MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
+        )
+        mf.setInteger(MediaFormat.KEY_BIT_RATE, 2000000)
+        mf.setInteger(
+            MediaFormat.KEY_FRAME_RATE,
+            inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE)
+        )
+        mf.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 15)
+        mf.setString(MediaFormat.KEY_MIME, outMime)
+        return mf
     }
 
     /**Init [eglDisplay], [eglContext] & [eglSurface]*/
@@ -204,8 +214,7 @@ class AddTextToVideoProcessor {
         eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
         if (eglDisplay == EGL14.EGL_NO_DISPLAY)
             throw RuntimeException(
-                "eglDisplay == EGL14.EGL_NO_DISPLAY: "
-                        + GLUtils.getEGLErrorString(EGL14.eglGetError())
+                "eglDisplay == EGL14.EGL_NO_DISPLAY: " + GLUtils.getEGLErrorString(EGL14.eglGetError())
             )
 
         val version = IntArray(2)
@@ -263,7 +272,7 @@ class AddTextToVideoProcessor {
         allInputDecoded = false
         allOutputEncoded = false
 
-        textAnimator.setCamera(width, height)
+        textAnimator.setCamera(outputSize.width, outputSize.height)
 
         // Extract, decode, edit, encode, and mux
         while (!allOutputEncoded) {
@@ -314,14 +323,18 @@ class AddTextToVideoProcessor {
                             // Draw texture with opengl
                             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
                             GLES20.glClearColor(0f, 0f, 0f, 0f)
-                            GLES20.glViewport(0, 0, width, height)
+                            GLES20.glViewport(0, 0, outputSize.width, outputSize.height)
 
                             videoRenderer?.draw(getMVP(), texMatrix, null)
 
                             textAnimator.update()
                             textRenderer!!.draw(
                                 textAnimator.getMVP(), null,
-                                textBitmap ?: textToBitmap(text!!, width, height)
+                                textBitmap ?: textToBitmap(
+                                    text!!,
+                                    outputSize.width,
+                                    outputSize.height
+                                )
                                     .also { textBitmap = it }
                             )
                             logD("Drawing at time ${bufferInfo.presentationTimeUs / 1000000f}")
@@ -400,8 +413,7 @@ class AddTextToVideoProcessor {
         thread?.quitSafely()
         thread = null
 
-        width = -1
-        height = -1
+        outputSize = Size(-1, -1)
         trackIndex = -1
     }
 

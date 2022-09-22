@@ -49,8 +49,7 @@ class TextAnimator {
         // Text reached destination?
         if (distance(textTarget, textPosition) > reachDistance)
             textPosition += normalize(textTarget - textPosition) * time.deltaTimeSec * speed
-        else
-            initPositions()
+        else initPositions()
     }
 
     fun setCamera(width: Int, height: Int) {
